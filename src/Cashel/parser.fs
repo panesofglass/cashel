@@ -45,14 +45,9 @@ module Parser =
     ///filter checks the value returned from item against the predicate function f
     let filter p f = p >>= (fun x -> if f x then result x else zero)
    
-    ///unfold generates a parser from the inital seed value filter f and a function to get the next value
-    let unfold seed f next =
-        let rec loop curr = parser {
-            if f curr then return curr
-            else return! zero
-            return! loop (next curr) }
-        loop seed
-    
-    ///pure applicative functor
-    let (<*>) f a = f >>= (fun f' -> a >>= (fun a' -> result (f' a')))
+    ///apply
+    let inline (<*>) f a = f >>= (fun f' -> a >>= (fun a' -> result (f' a')))
+
+    ///lift
+    let inline (<!>) f a = map a f
    

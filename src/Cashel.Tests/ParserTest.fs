@@ -52,4 +52,9 @@ let test_monad_zero () =
     let p = parser { if false then return 't' }
     p "test" |> should equal None
     
-
+[<Test>]
+let test_lift_and_apply () =
+    let p1 = fun input -> Some(1, input)
+    let p2 = fun input -> Some(2, input)
+    let p = (fun a b -> a + b) <!> p1 <*> p2
+    p "test" |> should equal (Some(3, "test"))

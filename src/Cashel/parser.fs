@@ -25,8 +25,8 @@ module Parser =
     
     //I define infix operator versions of bind and choice to make it more 
     //convienent to call
-    let (>>=) = bind
-    let (+++) = choice
+    let inline (>>=) p f = bind p f
+    let inline (+++) p q = choice p q
     
     //Here's the parser monad definition
     type ParserBuilder() =

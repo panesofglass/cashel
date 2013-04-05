@@ -34,3 +34,4 @@ tools/FAKE/templates/
 test/
 *_Spliced.*
 packages/
+.nuget/

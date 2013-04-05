@@ -11,8 +11,7 @@
     <AssemblyName>Cashel.Sample.Peg</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <Name>Cashel.Sample.Peg</Name>
-    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\..\</SolutionDir>
-    <RestorePackages>true</RestorePackages>
+    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -24,7 +23,7 @@
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>bin\Debug\Cashel.Sample.Peg.XML</DocumentationFile>
     <StartAction>Program</StartAction>
-    <StartProgram>C:\Users\hpierson\Projects\cashel\packages\NUnit.Runners.2.6.2\tools\nunit-console.exe</StartProgram>
+    <StartProgram>..\packages\NUnit.Runners.2.6.2\tools\nunit-console.exe</StartProgram>
     <StartArguments>Cashel.Sample.Peg.dll /framework=4.0 /wait</StartArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
@@ -40,7 +39,7 @@
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
   </PropertyGroup>
   <Import Project="$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets" Condition=" Exists('$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets')" />
-  <Import Project="$(SolutionDir)\.nuget\nuget.targets" />
+  <Import Project="..\Build\NuGet.targets" />
   <ItemGroup>
     <Compile Include="peg2.fs" />
     <Compile Include="peg.fs" />
@@ -51,7 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FsUnit.NUnit">
-      <HintPath>..\..\packages\FsUnit.1.1.1.0\lib\Net40\FsUnit.NUnit.dll</HintPath>
+      <HintPath>..\packages\FsUnit.1.1.1.0\lib\Net40\FsUnit.NUnit.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
@@ -59,12 +58,14 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="nunit.framework">
-      <HintPath>..\..\packages\NUnit.2.6.2\lib\nunit.framework.dll</HintPath>
+      <HintPath>..\packages\NUnit.2.6.2\lib\nunit.framework.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Cashel\Cashel.fsproj">
       <Name>Cashel</Name>
       <Project>{bb0f7308-c60a-471a-84ed-a76f64469028}</Project>

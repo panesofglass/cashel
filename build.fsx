@@ -1,14 +1,26 @@
-﻿#r "packages/FAKE.1.74.139.0/tools/FakeLib.dll"
-#r "packages/IntelliFactory.Build.0.0.6/lib/net40/IntelliFactory.Build.dll"
-#r "packages/DotNetZip.1.9.1.8/lib/net20/Ionic.Zip.dll"
+#if BOOT
+open Fake
+module FB = Fake.Boot
+FB.Prepare {
+    FB.Config.Default __SOURCE_DIRECTORY__ with
+        NuGetDependencies =
+            let ( ! ) x = FB.NuGetDependency.Create x
+            [
+                 !"IntelliFactory.Build"
+                 !"FSUnit"
+                 !"NUnit"
+                 !"NUnit.Runners"
+            ]
+}
+#else
+#load ".build/boot.fsx"
 
 open System
 open System.IO
-open System.Net
 open Fake
-open Ionic.Zip
 module B = IntelliFactory.Build.CommonBuildSetup
-module NG = IntelliFactory.Build.NuGet
+module F = IntelliFactory.Build.FileSystem
+module NG = IntelliFactory.Build.NuGetUtils
 module X = IntelliFactory.Build.XmlGenerator
 
 let (+/) a b = Path.Combine(a, b)
@@ -40,190 +52,131 @@ let metadata =
         Product = Some Config.packageId,
         Website = Some Config.website)
 
-let frameworks = [B.Net20; B.Net40; B.Net45]
+let mainFrameworks = [B.Net20; B.Net40; B.Net45]
 
-let MainSolution =
-    B.Solution.Standard rootDir metadata [
-        B.Project.FSharp "Cashel" frameworks
+let mainConfigs : list<B.BuildConfiguration> =
+    [
+        for fw in mainFrameworks ->
+            {
+                ConfigurationName = "Release"
+                Debug = false
+                FrameworkVersion = fw
+                NuGetDependencies = new NuGet.PackageDependencySet(fw.ToFrameworkName(), [])
+            }
     ]
-let buildMain = T "BuildMain" MainSolution.Build
-let cleanMain = T "CleanMain" MainSolution.Clean
 
-let TestSolution =
-    B.Solution.Standard rootDir metadata [
-        B.Project.FSharp "Cashel" frameworks
-        B.Project.FSharp "Cashel.Tests" frameworks
+let testFrameworks = [B.Net45]
+
+let testConfigs : list<B.BuildConfiguration> =
+    [
+        for fw in testFrameworks ->
+            {
+                ConfigurationName = "Release"
+                Debug = false
+                FrameworkVersion = fw
+                NuGetDependencies =
+                    let (!) x = new NuGet.PackageDependency(x)
+                    let deps =
+                        [
+                            !"FsUnit"
+                            !"NUnit"
+                        ]
+                    new NuGet.PackageDependencySet(fw.ToFrameworkName(), deps)
+            }
     ]
-let buildTest = T "BuildTest" TestSolution.Build
-let cleanTest = T "CleanTest" TestSolution.Clean
 
-let PegSolution =
-    B.Solution.Standard rootDir metadata [
-        B.Project.FSharp "Cashel" frameworks
-        B.Project.FSharp "Cashel.Sample.Peg" frameworks
-    ]
-let buildPeg = T "BuildPeg" PegSolution.Build
-let cleanPeg = T "CleanPeg" PegSolution.Clean
+let defProject configs (name: string) : B.Project =
+    {
+        Name = name
+        BuildConfigurations = configs
+        MSBuildProjectFilePath = Some (rootDir +/ name +/ (name + ".fsproj"))
+    }
 
-let prepareTools =
-    T "PrepareTools" <| fun () ->
-        Fake.FileSystemHelper.ensureDirectory toolsDir
+let solution : B.Solution =
+    {
+        Metadata = metadata
+        Projects =
+            [
+                defProject mainConfigs "Cashel"
+                defProject testConfigs "Cashel.Tests"
+                defProject testConfigs "Cashel.Sample.Peg"
+            ]
+        RootDirectory = rootDir
+    }
 
-let cleanTools =
-    T "CleanTools" <| fun () ->
-        Directory.Delete(toolsDir, true)
+let buildMain =
+    T "BuildMain" (fun () ->
+        solution.MSBuild()
+        |> Async.RunSynchronously)
+
+let cleanMain =
+    T "CleanMain" (fun () ->
+        solution.MSBuild {
+            BuildConfiguration = None
+            Properties = Map []
+            Targets = ["Clean"]
+        }
+        |> Async.RunSynchronously)
 
 let build = T "Build" ignore
 let clean = T "Clean" ignore
 
 let dotBuildDir = rootDir+/".build/"
 
-let buildNuSpecXml () =
-    let e n = X.Element.Create n
-    let ( -- ) (a: X.Element) (b: string) = X.Element.WithText b a
-    e "package" - [
-        e "metadata" - [
-            e "id" -- Config.packageId
-            e "version" -- Config.version
-            e "authors"-- Config.authors
-            e "owners"-- Config.owners
-            e "language"-- "en-US"
-            e "licenseUrl" -- Config.licenseUrl
-            e "projectUrl"-- Config.website
-            e "requireLicenseAcceptance" -- "false"
-            e "description" -- Config.description
-            e "copyright" -- sprintf "Copyright (c) %O %s" DateTime.Now.Year Config.authors
-            e "tags" -- String.concat " " Config.tags
-        ]
-        e "files" - [
-            e "file" + ["src", @"root\net20\*.*"; "target", @"tools\net20"]
-            e "file" + ["src", @"root\net40\*.*"; "target", @"tools\net40"]
-            e "file" + ["src", @"root\net45\*.*"; "target", @"tools\net45"]
-        ]
-    ]
+let buildNuGetPackage = T "BuildNuGetPackage" <| fun () ->
+    let version = new NuGet.SemanticVersion(Config.assemblyFileVersion)
+    let content =
+        use out = new MemoryStream()
+        let builder = new NuGet.PackageBuilder()
+        builder.Id <- Config.packageId
+        builder.Version <- version
+        builder.Authors.Add(Config.authors) |> ignore
+        builder.Owners.Add(Config.authors) |> ignore
+        builder.LicenseUrl <- Uri(Config.licenseUrl)
+        builder.ProjectUrl <- Uri(Config.website)
+        builder.Copyright <- String.Format("Copyright (c) {0} {1}", DateTime.Now.Year, Config.authors)
+        builder.Description <- Config.description
+        Config.tags
+        |> Seq.iter (builder.Tags.Add >> ignore)
+        for cfg in mainConfigs do
+            for ext in [".xml"; ".dll"] do
+                let n = Config.packageId
+                let f = new NuGet.PhysicalPackageFile()
+                let conf =
+                    let fw = cfg.FrameworkVersion.GetMSBuildLiteral()
+                    String.Format("{0}-{1}", cfg.ConfigurationName, fw)
+                let netXX = cfg.FrameworkVersion.GetNuGetLiteral()
+                f.SourcePath <- rootDir+/n+/"bin"+/conf+/(n + ext)
+                f.TargetPath <- "lib"+/netXX+/(n + ext)
+                builder.Files.Add(f)
+        builder.Save(out)
+        F.Binary.FromBytes (out.ToArray())
+        |> F.BinaryContent
+    let out = rootDir+/".build"+/String.Format("{0}.{1}.nupkg", Config.packageId, version)
+    content.WriteFile(out)
+    tracefn "Written %s" out
 
-let nugetPackageFile =
-    dotBuildDir +/ sprintf "%s.%s.nupkg" Config.packageId Config.version
+let runTests = T "test" <| fun () ->
+    let runner =
+        !! @"packages\NUnit.Runners.*\tools\nunit-console.exe"
+        |> Seq.head
+    !! @"Cashel.Tests\bin\**\Cashel.Tests.dll"
+    |> NUnit (fun cfg ->
+        { cfg with
+            ToolPath = Path.GetDirectoryName(runner)
+            Framework = "net-4.5"
+        })
 
-let buildNuGet =
-    T "BuildNuGet" <| fun () ->
-        ensureDirectory dotBuildDir
-        let nuspec = dotBuildDir+/"Cashel.nuspec"
-        X.WriteFile nuspec (buildNuSpecXml())
-        for f in frameworks do
-            let rDir = dotBuildDir+/"root"+/f.GetNuGetLiteral()
-            if Directory.Exists rDir then
-                Directory.Delete(rDir, true)
-            ensureDirectory rDir
-            let config = "Release-" + f.GetMSBuildLiteral()
-            let prefix = rootDir +/ "*" +/ "bin" +/ config
-            (!+ (prefix +/ "*.dll")
-                ++ (prefix +/ "*.xml")
-                ++ (prefix +/ "*.exe")
-                ++ (prefix +/ "*.exe.config"))
-            |> Scan
-            |> Seq.filter (fun x ->
-                [
-                    "mscorlib.dll"
-                    "system.dll"
-                    "system.core.dll"
-                    "system.numerics.dll"
-                    "tests.dll"
-                    "tests.xml"
-                    "tests.exe"
-                ]
-                |> List.forall (fun n -> not (x.ToLower().EndsWith n)))
-            |> Seq.distinct
-            |> Copy rDir
-            do !! (rootDir +/ "build" +/ "DeployedTargets" +/ "*.targets") |> Copy rDir
-        let nugetExe = rootDir+/".nuget"+/"NuGet.exe"
-        nuspec
-        |> NuGetPack (fun p ->
-            { p with
-                OutputPath = dotBuildDir
-                ToolPath   = nugetExe
-                Version    = Config.version
-                WorkingDir = dotBuildDir
-            })
+let boilerplate = T "boilerplate" <| fun () ->
+    B.Prepare (tracefn "%s") rootDir
 
-let zipPackageFile =
-    rootDir +/ "Web" +/ "downloads" +/ sprintf "%s-%s.zip" Config.packageId Config.version
-
-let buildZipPackage =
-    T "BuildZipPackage" <| fun () ->
-        ensureDirectory (Path.GetDirectoryName zipPackageFile)
-        let zip = new ZipFile()
-        let addFile path =
-            zip.AddEntry(Path.GetFileName path, File.ReadAllBytes path) |> ignore
-        addFile nugetPackageFile
-        addFile (rootDir+/"LICENSE.txt")
-        zip.Save zipPackageFile
-
-prepareTools
-    ==> buildMain
-    ==> buildTest // Need to also runTests
-    //==> runTests
-    ==> buildPeg
-    ==> buildNuGet
-    ==> buildZipPackage
+buildMain
+    ==> buildNuGetPackage
     ==> build
 
-prepareTools
-    ==> cleanMain
-    ==> cleanTest
-    ==> cleanPeg
-    ==> cleanTools
+cleanMain
     ==> clean
 
-RunTargetOrDefault "Build"
+RunTargetOrDefault build
 
-(*
-Target? Test <-
-    fun _ ->
-        !+ (testDir + "/*.dll")
-          |> Scan
-          |> NUnit (fun p -> 
-                      {p with 
-                         ToolPath = nunitPath; 
-                         DisableShadowCopy = true; 
-                         OutputFile = nunitOutput}) 
-
-Target? GenerateDocumentation <-
-    fun _ ->
-      !+ (buildDir + "Cashel.dll")      
-        |> Scan
-        |> Docu (fun p ->
-            {p with
-               ToolPath = "./lib/FAKE/docu.exe"
-               TemplatesPath = "./lib/FAKE/templates"
-               OutputPath = docsDir })
-
-Target? CopyLicense <-
-    fun _ ->
-        [ "LICENSE.txt" ] |> CopyTo buildDir
-
-Target? BuildZip <-
-    fun _ -> Zip buildDir zipFileName filesToZip
-
-Target? ZipDocumentation <-
-    fun _ ->    
-        let docFiles = 
-          !+ (docsDir + "/**/*.*")
-            |> Scan
-        let zipFileName = deployDir + sprintf "Documentation-%s.zip" version
-        Zip docsDir zipFileName docFiles
-
-Target? Default <- DoNothing
-Target? Deploy <- DoNothing
-
-// Dependencies
-For? BuildApp <- Dependency? Clean
-For? Test <- Dependency? BuildApp |> And? BuildTest
-For? GenerateDocumentation <- Dependency? BuildApp
-For? ZipDocumentation <- Dependency? GenerateDocumentation
-For? BuildZip <- Dependency? BuildApp |> And? CopyLicense
-For? CreateNuGet <- Dependency? Test |> And? BuildZip |> And? ZipDocumentation
-For? Deploy <- Dependency? Test |> And? BuildZip |> And? ZipDocumentation
-For? Default <- Dependency? Deploy
-
-*)
+#endif

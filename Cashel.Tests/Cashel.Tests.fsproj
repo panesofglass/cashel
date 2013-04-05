@@ -4,21 +4,23 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>278da219-5263-4b10-87cb-5cd4f5f8a50c</ProjectGuid>
     <Name>Cashel.Tests</Name>
-    <StartAction>Program</StartAction>
-    <StartProgram>..\packages\NUnit.Runners.2.6.2\tools\nunit-console.exe</StartProgram>
-    <StartArguments>Cashel.tests.dll /framework=4.0 /wait</StartArguments>
+    <OutputType>Library</OutputType>
   </PropertyGroup>
+  <Import Project="../.build/FSharp.targets" />
   <ItemGroup>
     <Compile Include="ParserTest.fs" />
     <Compile Include="ListPrimitivesTest.fs" />
-    <None Include="packages.config" />
-    <None Include="app.config" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="FsUnit.NUnit" />
     <Reference Include="mscorlib" />
-    <Reference Include="nunit.framework" />
+    <Reference Include="System.Numerics" />
   </ItemGroup>
+  <!--<ItemGroup>
+    <Reference Include="FSharp.Core, Version=4.3.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <SpecificVersion>true</SpecificVersion>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>-->
   <ItemGroup>
     <ProjectReference Include="..\Cashel\Cashel.fsproj">
       <Name>Cashel</Name>
@@ -26,5 +28,4 @@
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>
-  <Import Project="../.build/FSharp.targets" />
 </Project>

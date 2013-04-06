@@ -170,13 +170,17 @@ let runTests = T "test" <| fun () ->
 let boilerplate = T "boilerplate" <| fun () ->
     B.Prepare (tracefn "%s") rootDir
 
+let defaultBuild = T "default" ignore
+
 buildMain
-    ==> buildNuGetPackage
     ==> build
+    ==> runTests
+    ==> buildNuGetPackage
+    ==> defaultBuild
 
 cleanMain
     ==> clean
 
-RunTargetOrDefault build
+RunTargetOrDefault defaultBuild
 
 #endif
